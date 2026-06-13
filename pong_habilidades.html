@@ -247,6 +247,59 @@
     z-index: 15;
   }
 
+  /* Menu/pause button */
+  #menu-btn-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+  }
+  #menu-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: white;
+    font-size: 14px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background 0.15s;
+  }
+  #menu-btn:hover, #menu-btn:active { background: rgba(255,255,255,0.25); }
+
+  /* Pause menu overlay */
+  #pause-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.72);
+    z-index: 60;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  #pause-overlay h2 {
+    color: white;
+    font-size: 32px;
+    margin-bottom: 8px;
+    text-shadow: 2px 2px 4px black;
+  }
+  .pause-btn {
+    font-size: 20px;
+    padding: 14px 40px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    width: 240px;
+    transition: transform 0.1s;
+  }
+  .pause-btn:active { transform: scale(0.96); }
+  .pause-btn.resume  { background: #4caf50; color: white; }
+  .pause-btn.restart { background: #ffeb3b; color: #333; }
+  .pause-btn.menu    { background: #f44336; color: white; }
+
   /* ===== Touch controls ===== */
   .touch-controls {
     display: none;
@@ -358,6 +411,9 @@
       <div class="ability-name" id="abilityName1" style="background:rgba(100,181,246,0.2)">¿?</div>
       <div class="ability-status" id="abilityStatus1">Pulsa 1 para usar</div>
     </div>
+    <div id="menu-btn-wrap">
+      <button id="menu-btn" onclick="openPauseMenu()">⏸ Menú</button>
+    </div>
     <div class="player-hud" id="hudP2" style="color:#ff8a65">
       <div class="score" id="score2">0</div>
       <div class="ability-name" id="abilityName2" style="background:rgba(255,138,101,0.2)">¿?</div>
@@ -419,6 +475,13 @@
     </div>
   </div>
 
+  <div id="pause-overlay">
+    <h2>⏸ Pausa</h2>
+    <button class="pause-btn resume"  onclick="resumeGame()">▶ Continuar</button>
+    <button class="pause-btn restart" onclick="restartMatch()">↺ Reiniciar partida</button>
+    <button class="pause-btn menu"    onclick="goToMenu()">🏠 Menú principal</button>
+  </div>
+
   <div id="rotate-overlay">
     <div class="icon">📱</div>
     <div>Gira tu dispositivo para jugar en horizontal</div>
@@ -426,8 +489,8 @@
 </div>
 
 <script>
-const W = window.innerWidth;
-const H = window.innerHeight;
+let W = window.innerWidth;
+let H = window.innerHeight;
 const PADDLE_HEIGHT_NORMAL = 110;
 const PADDLE_WIDTH = 26;
 const BALL_SIZE = 18;
@@ -982,6 +1045,7 @@ function assignNewAbility(player) {
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
+  if (e.code === 'Escape') { openPauseMenu(); return; }
   if (!gameRunning) return;
   if (e.code === 'Digit1') activateAbility(p1, p2);
   if (e.code === 'KeyP') activateAbility(p2, p1);
@@ -1117,16 +1181,18 @@ function updateBall() {
   }
 
   // Slow zones: reduce ball speed when near a paddle with active slow field
+  let inAnySlowZone = false;
   [p1, p2].forEach(p => {
     if (p.slowZoneActive) {
       const ballCenterX = ball.x + effSize/2;
-      const zoneWidth = 120;
-      const inZone = (p.side === 'left' && ballCenterX < PADDLE_WIDTH + 30 + zoneWidth) ||
-                      (p.side === 'right' && ballCenterX > W - PADDLE_WIDTH - 30 - zoneWidth);
-      if (inZone) ball.zoneSlow = 0.45; else if (p === p2 || !p1.slowZoneActive) ball.zoneSlow = 1;
+      const zoneStart = p.side === 'left' ? PADDLE_WIDTH + 30 : W - PADDLE_WIDTH - 30 - 120;
+      const zoneEnd   = p.side === 'left' ? PADDLE_WIDTH + 30 + 120 : W - PADDLE_WIDTH - 30;
+      if (ballCenterX > zoneStart && ballCenterX < zoneEnd) {
+        inAnySlowZone = true;
+      }
     }
   });
-  if (!p1.slowZoneActive && !p2.slowZoneActive) ball.zoneSlow = 1;
+  ball.zoneSlow = inAnySlowZone ? 0.45 : 1;
 
   // Rainbow visual
   if (ball.rainbowActive) {
@@ -1304,8 +1370,9 @@ function resetBall(scorer) {
   ball.x = W/2 - effSize/2;
   ball.y = H/2 - effSize/2;
   ball.vx = (scorer === p1 ? -1 : 1) * ball.baseSpeed;
-  ball.vy = (Math.random() - 0.5) * 6;
+  ball.vy = (Math.random() - 0.5) * 4;
   ball.speedMultiplier = 1;
+  ball.zoneSlow = 1;
   ball.el.classList.remove('fire', 'slow');
   p1.stickingBall = null;
   p2.stickingBall = null;
@@ -1473,6 +1540,96 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
+/* ===== Pause / Menu ===== */
+function openPauseMenu() {
+  if (!gameRunning) return;
+  gameRunning = false;
+  document.getElementById('pause-overlay').style.display = 'flex';
+}
+
+function resumeGame() {
+  document.getElementById('pause-overlay').style.display = 'none';
+  gameRunning = true;
+}
+
+function restartMatch() {
+  document.getElementById('pause-overlay').style.display = 'none';
+  // Clean up any ability side effects
+  cleanupAbilityEffects();
+  // Reset scores
+  p1.score = 0; p2.score = 0;
+  document.getElementById('score1').textContent = '0';
+  document.getElementById('score2').textContent = '0';
+  // Reset ability HUD
+  document.getElementById('abilityStatus1').textContent = 'Pulsa 1 para usar';
+  document.getElementById('abilityStatus2').textContent = gameMode === 'bot' ? 'Lista (IA)' : 'Pulsa P para usar';
+  startGame();
+}
+
+function goToMenu() {
+  document.getElementById('pause-overlay').style.display = 'none';
+  cleanupAbilityEffects();
+  // Reset scores
+  p1.score = 0; p2.score = 0;
+  document.getElementById('score1').textContent = '0';
+  document.getElementById('score2').textContent = '0';
+  gameRunning = false;
+  // Re-show start screen
+  const overlay = document.getElementById('message-overlay');
+  overlay.style.display = 'flex';
+  // Restore overlay content if endGame had replaced it
+  if (!document.getElementById('start-game-btn')) {
+    location.reload();
+  }
+}
+
+function cleanupAbilityEffects() {
+  // Remove all DOM ability effects
+  ['paddle1-wall', 'paddle2-wall'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.remove();
+  });
+  document.querySelectorAll('[id^="blackout-"],[id^="slowzone-"]').forEach(el => el.remove());
+  removeExtraBalls();
+
+  // Reset all ability state
+  [p1, p2].forEach(p => {
+    p.ability = null;
+    p.abilityCooldown = 0;
+    p.abilityActive = 0;
+    p.wallActive = false;
+    p.magnetActive = false;
+    p.controlsInverted = false;
+    p.frozen = false;
+    p.speedBoost = 1;
+    p.pointShield = false;
+    p.doublePoint = false;
+    p.stickyReady = false;
+    p.stickingBall = null;
+    p.stickTimer = 0;
+    p.slowZoneActive = false;
+    p.lastHitBall = null;
+    p.paddleHeight = PADDLE_HEIGHT_NORMAL;
+    p.el.style.opacity = '1';
+    p.el.style.boxShadow = '';
+    p.el.style.filter = '';
+  });
+
+  // Reset ball appearance
+  ball.speedMultiplier = 1;
+  ball.zoneSlow = 1;
+  ball.sizeMultiplier = 1;
+  ball.curveActive = false;
+  ball.gravityWell = false;
+  ball.boostedBounce = false;
+  ball.confuseActive = false;
+  ball.rainbowActive = false;
+  ball.el.style.width = BALL_SIZE + 'px';
+  ball.el.style.height = BALL_SIZE + 'px';
+  ball.el.style.background = '';
+  ball.el.style.boxShadow = '';
+  ball.el.classList.remove('fire', 'slow');
+}
+
 /* ===== Selectors (mode, bot difficulty, points) ===== */
 let gameMode = '2p'; // '2p' or 'bot'
 let botDifficulty = 'easy';
@@ -1557,6 +1714,33 @@ function updateBotAI() {
 }
 
 function startGame() {
+  // Recalculate dimensions at game start (avoids mobile viewport bugs)
+  W = document.getElementById('game').clientWidth;
+  H = document.getElementById('game').clientHeight;
+
+  // Reset positions with fresh dimensions
+  p1.x = 30;
+  p1.y = H/2 - p1.paddleHeight/2;
+  p2.x = W - 30 - PADDLE_WIDTH;
+  p2.y = H/2 - p2.paddleHeight/2;
+
+  ball.x = W/2 - BALL_SIZE/2;
+  ball.y = H/2 - BALL_SIZE/2;
+  ball.vx = 3.5;
+  ball.vy = (Math.random() - 0.5) * 4;
+  ball.speedMultiplier = 1;
+  ball.zoneSlow = 1;
+  ball.sizeMultiplier = 1;
+  ball.curveActive = false;
+  ball.gravityWell = false;
+  ball.boostedBounce = false;
+  ball.confuseActive = false;
+  ball.rainbowActive = false;
+  ball.el.style.width = BALL_SIZE + 'px';
+  ball.el.style.height = BALL_SIZE + 'px';
+  ball.el.style.background = '';
+  ball.el.style.boxShadow = '';
+
   document.getElementById('message-overlay').style.display = 'none';
   gameRunning = true;
 
@@ -1567,6 +1751,9 @@ function startGame() {
     botTargetY = H/2 - p2.paddleHeight/2;
     const p2Zone = document.querySelector('.touch-zone.p2');
     if (p2Zone) p2Zone.style.display = 'none';
+  } else {
+    const p2Zone = document.querySelector('.touch-zone.p2');
+    if (p2Zone) p2Zone.style.display = '';
   }
 
   render();
