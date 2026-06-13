@@ -285,6 +285,11 @@
     user-select: none;
     opacity: 0.55;
   }
+  .touch-btn.move-btn {
+    width: 86px;
+    height: 86px;
+    font-size: 34px;
+  }
   .touch-btn:active, .touch-btn.pressed {
     background: rgba(255,255,255,0.3);
     transform: scale(0.92);
@@ -334,6 +339,7 @@
 
   @media (pointer: coarse) and (max-height: 450px) {
     .touch-btn { width: 58px; height: 58px; font-size: 22px; }
+    .touch-btn.move-btn { width: 70px; height: 70px; font-size: 28px; }
     .touch-btn.ability-btn { width: 62px; height: 62px; font-size: 11px; }
     .player-hud { padding: 6px 14px; min-width: 90px; }
     .player-hud .score { font-size: 44px; }
@@ -365,11 +371,26 @@
 
   <div id="message-overlay">
     <h1>🏓 Pong de Habilidades</h1>
-    <div class="subtitle">2 jugadores en local · habilidades aleatorias</div>
+    <div class="subtitle">2 jugadores en local o contra la maquina · habilidades aleatorias</div>
+
+    <div class="points-select-label">Modo de juego</div>
+    <div class="points-options">
+      <div class="points-btn selected" data-mode="2p" id="mode-2p">2 Jugadores</div>
+      <div class="points-btn" data-mode="bot" id="mode-bot">Vs Bot</div>
+    </div>
+
+    <div id="bot-difficulty-wrap" style="display:none;">
+      <div class="points-select-label">Dificultad del bot</div>
+      <div class="points-options">
+        <div class="points-btn selected" data-bot="easy" id="bot-easy">Facil</div>
+        <div class="points-btn" data-bot="medium" id="bot-medium">Medio</div>
+        <div class="points-btn" data-bot="hard" id="bot-hard">Dificil</div>
+      </div>
+    </div>
 
     <div class="info-card">
       <p style="font-weight:bold; color:#64b5f6; margin-bottom:4px;">Jugador 1: W / S mover &nbsp;|&nbsp; 1 usar habilidad</p>
-      <p style="font-weight:bold; color:#ff8a65; margin-bottom:0;">Jugador 2: J / L mover &nbsp;|&nbsp; P usar habilidad</p>
+      <p style="font-weight:bold; color:#ff8a65; margin-bottom:0;" id="p2-controls-text">Jugador 2: J / L mover &nbsp;|&nbsp; P usar habilidad</p>
     </div>
     <p style="font-size:13px; opacity:0.7; max-width:380px;">En celular: usa los botones laterales ▲▼ y el botón HABILIDAD de tu lado (horizontal)</p>
 
@@ -387,14 +408,14 @@
 
   <div class="touch-controls">
     <div class="touch-zone p1">
-      <div class="touch-btn" id="btn-p1-up">▲</div>
+      <div class="touch-btn move-btn" id="btn-p1-up">▲</div>
       <div class="touch-btn ability-btn p1-btn" id="btn-p1-ability">HABILIDAD</div>
-      <div class="touch-btn" id="btn-p1-down">▼</div>
+      <div class="touch-btn move-btn" id="btn-p1-down">▼</div>
     </div>
     <div class="touch-zone p2">
-      <div class="touch-btn" id="btn-p2-up">▲</div>
+      <div class="touch-btn move-btn" id="btn-p2-up">▲</div>
       <div class="touch-btn ability-btn p2-btn" id="btn-p2-ability">HABILIDAD</div>
-      <div class="touch-btn" id="btn-p2-down">▼</div>
+      <div class="touch-btn move-btn" id="btn-p2-down">▼</div>
     </div>
   </div>
 
@@ -898,6 +919,7 @@ const p1 = {
   stickyReady: false,
   stickingBall: null,
   stickTimer: 0,
+  lastHitBall: null,
   slowZoneActive: false,
   _needsNewAbility: false
 };
@@ -923,6 +945,7 @@ const p2 = {
   stickyReady: false,
   stickingBall: null,
   stickTimer: 0,
+  lastHitBall: null,
   slowZoneActive: false,
   _needsNewAbility: false
 };
@@ -1035,8 +1058,10 @@ function updatePaddles() {
     if (down1) p1.y += speed1;
   }
 
-  // Player 2
-  if (!p2.frozen) {
+  // Player 2 (human) or Bot
+  if (gameMode === 'bot') {
+    updateBotAI();
+  } else if (!p2.frozen) {
     const speed2 = PADDLE_SPEED * p2.speedBoost;
     let up2 = keys['KeyJ'], down2 = keys['KeyL'];
     if (p2.controlsInverted) { [up2, down2] = [down2, up2]; }
@@ -1165,40 +1190,51 @@ function checkPaddleCollision(p, ball) {
   const paddleTop = p.y;
   const paddleBottom = p.y + p.paddleHeight;
 
-  if (ball.x + effSize > paddleLeft && ball.x < paddleRight &&
-      ball.y + effSize > paddleTop && ball.y < paddleBottom) {
+  const overlapping = ball.x + effSize > paddleLeft && ball.x < paddleRight &&
+                       ball.y + effSize > paddleTop && ball.y < paddleBottom;
 
-    // Sticky ability: catch the ball instead of bouncing
-    if (p.stickyReady && !p.stickingBall &&
-        ((p.side === 'left' && ball.vx < 0) || (p.side === 'right' && ball.vx > 0))) {
-      p.stickingBall = ball;
-      p.stickTimer = 60; // 1 second
-      p.stickyReady = false;
-      ball.vx = 0;
-      ball.vy = 0;
-      spawnHitParticles(ballCenterX, ballCenterY, '#ffab91');
-      return;
-    }
-
-    const bounceMult = (p.ability && p.abilityActive > 0 && ball.boostedBounce) ? 1.12 : 1.04;
-
-    if (p.side === 'left' && ball.vx < 0) {
-      ball.x = paddleRight;
-      ball.vx = Math.abs(ball.vx) * bounceMult;
-      addSpinFromHit(p, ball);
-      bouncePaddle(p);
-      spawnHitParticles(ballCenterX, ballCenterY, '#64b5f6');
-    } else if (p.side === 'right' && ball.vx > 0) {
-      ball.x = paddleLeft - effSize;
-      ball.vx = -Math.abs(ball.vx) * bounceMult;
-      addSpinFromHit(p, ball);
-      bouncePaddle(p);
-      spawnHitParticles(ballCenterX, ballCenterY, '#ff8a65');
-    }
-
-    const maxSpeed = 14;
-    ball.vx = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vx));
+  if (!overlapping) {
+    // Reset contact flag once the ball is no longer touching this paddle
+    p.lastHitBall = null;
+    return;
   }
+
+  // Already bounced this ball off this paddle during the current contact - skip
+  if (p.lastHitBall === ball) return;
+
+  // Sticky ability: catch the ball instead of bouncing
+  if (p.stickyReady && !p.stickingBall &&
+      ((p.side === 'left' && ball.vx < 0) || (p.side === 'right' && ball.vx > 0))) {
+    p.stickingBall = ball;
+    p.stickTimer = 60; // 1 second
+    p.stickyReady = false;
+    p.lastHitBall = ball;
+    ball.vx = 0;
+    ball.vy = 0;
+    spawnHitParticles(ballCenterX, ballCenterY, '#ffab91');
+    return;
+  }
+
+  const bounceMult = (p.ability && p.abilityActive > 0 && ball.boostedBounce) ? 1.12 : 1.04;
+
+  if (p.side === 'left' && ball.vx < 0) {
+    ball.x = paddleRight;
+    ball.vx = Math.abs(ball.vx) * bounceMult;
+    addSpinFromHit(p, ball);
+    bouncePaddle(p);
+    spawnHitParticles(ballCenterX, ballCenterY, '#64b5f6');
+    p.lastHitBall = ball;
+  } else if (p.side === 'right' && ball.vx > 0) {
+    ball.x = paddleLeft - effSize;
+    ball.vx = -Math.abs(ball.vx) * bounceMult;
+    addSpinFromHit(p, ball);
+    bouncePaddle(p);
+    spawnHitParticles(ballCenterX, ballCenterY, '#ff8a65');
+    p.lastHitBall = ball;
+  }
+
+  const maxSpeed = 14;
+  ball.vx = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vx));
 }
 
 function addSpinFromHit(p, ball) {
@@ -1235,7 +1271,9 @@ function spawnHitParticles(x, y, color) {
     particle.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
     particle.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
     document.getElementById('game').appendChild(particle);
-    setTimeout(() => particle.remove(), 400);
+    const cleanup = () => particle.remove();
+    particle.addEventListener('animationend', cleanup);
+    setTimeout(cleanup, 500);
   }
 }
 
@@ -1402,7 +1440,11 @@ function updateAbilityHUD(p) {
   } else if (p.abilityCooldown > 0) {
     statusEl.textContent = 'Recarga: ' + Math.ceil(p.abilityCooldown/60) + 's';
   } else {
-    statusEl.textContent = idx === 1 ? 'Pulsa 1 para usar' : 'Pulsa P para usar';
+    if (idx === 2 && gameMode === 'bot') {
+      statusEl.textContent = 'Lista (IA)';
+    } else {
+      statusEl.textContent = idx === 1 ? 'Pulsa 1 para usar' : 'Pulsa P para usar';
+    }
   }
 }
 
@@ -1431,15 +1473,88 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
-/* ===== Points selector ===== */
-['pts-5', 'pts-10', 'pts-15'].forEach(id => {
-  document.getElementById(id).addEventListener('click', () => {
-    document.querySelectorAll('.points-btn').forEach(b => b.classList.remove('selected'));
-    document.getElementById(id).classList.add('selected');
-    WIN_SCORE = parseInt(document.getElementById(id).dataset.points);
-    document.getElementById('controls-info').textContent = 'Primero en llegar a ' + WIN_SCORE + ' puntos gana';
+/* ===== Selectors (mode, bot difficulty, points) ===== */
+let gameMode = '2p'; // '2p' or 'bot'
+let botDifficulty = 'easy';
+
+function setupSelectorGroup(ids, onSelect) {
+  ids.forEach(id => {
+    document.getElementById(id).addEventListener('click', () => {
+      ids.forEach(otherId => document.getElementById(otherId).classList.remove('selected'));
+      document.getElementById(id).classList.add('selected');
+      onSelect(id);
+    });
   });
+}
+
+setupSelectorGroup(['mode-2p', 'mode-bot'], (id) => {
+  gameMode = (id === 'mode-bot') ? 'bot' : '2p';
+  const wrap = document.getElementById('bot-difficulty-wrap');
+  const p2text = document.getElementById('p2-controls-text');
+  if (gameMode === 'bot') {
+    wrap.style.display = 'block';
+    p2text.textContent = 'Jugador 2: controlado por la IA';
+  } else {
+    wrap.style.display = 'none';
+    p2text.textContent = 'Jugador 2: J / L mover  |  P usar habilidad';
+  }
 });
+
+setupSelectorGroup(['bot-easy', 'bot-medium', 'bot-hard'], (id) => {
+  botDifficulty = id.replace('bot-', '');
+});
+
+setupSelectorGroup(['pts-5', 'pts-10', 'pts-15'], (id) => {
+  WIN_SCORE = parseInt(document.getElementById(id).dataset.points);
+  document.getElementById('controls-info').textContent = 'Primero en llegar a ' + WIN_SCORE + ' puntos gana';
+});
+
+/* ===== Bot AI ===== */
+const BOT_SETTINGS = {
+  easy:   { reactionDelay: 18, speedMult: 0.55, errorMargin: 70, abilityChance: 0.004 },
+  medium: { reactionDelay: 8,  speedMult: 0.8,  errorMargin: 35, abilityChance: 0.01 },
+  hard:   { reactionDelay: 2,  speedMult: 1.05, errorMargin: 10, abilityChance: 0.02 }
+};
+
+let botTargetY = H/2;
+let botFrameCounter = 0;
+
+function updateBotAI() {
+  const settings = BOT_SETTINGS[botDifficulty];
+  botFrameCounter++;
+
+  // Recalculate target with a reaction delay (bot "sees" the ball with lag)
+  if (botFrameCounter % settings.reactionDelay === 0) {
+    const effSize = BALL_SIZE * ball.sizeMultiplier;
+    const ballCenterY = ball.y + effSize/2;
+    // Add some error/imprecision based on difficulty
+    const error = (Math.random() - 0.5) * settings.errorMargin;
+    botTargetY = ballCenterY + error - p2.paddleHeight/2;
+  }
+
+  // Only chase the ball if it's moving toward the bot (reduces "perfect tracking" feel)
+  const ballMovingTowardBot = ball.vx > 0;
+  if (!ballMovingTowardBot && botDifficulty !== 'hard') {
+    // Drift back toward center when ball moves away
+    botTargetY = H/2 - p2.paddleHeight/2;
+  }
+
+  const diff = botTargetY - p2.y;
+  const speed = PADDLE_SPEED * settings.speedMult * p2.speedBoost;
+
+  if (!p2.frozen) {
+    if (Math.abs(diff) > 4) {
+      let move = (p2.controlsInverted ? -1 : 1) * Math.sign(diff) * Math.min(speed, Math.abs(diff));
+      p2.y += move;
+    }
+  }
+  p2.y = Math.max(0, Math.min(H - p2.paddleHeight, p2.y));
+
+  // Occasionally use ability if available
+  if (p2.abilityCooldown === 0 && Math.random() < settings.abilityChance) {
+    activateAbility(p2, p1);
+  }
+}
 
 function startGame() {
   document.getElementById('message-overlay').style.display = 'none';
@@ -1447,6 +1562,12 @@ function startGame() {
 
   assignNewAbility(p1);
   assignNewAbility(p2);
+
+  if (gameMode === 'bot') {
+    botTargetY = H/2 - p2.paddleHeight/2;
+    const p2Zone = document.querySelector('.touch-zone.p2');
+    if (p2Zone) p2Zone.style.display = 'none';
+  }
 
   render();
 }
