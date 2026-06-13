@@ -43,15 +43,21 @@
     text-align: center;
     color: white;
     text-shadow: 1px 1px 3px black;
+    background: rgba(0,0,0,0.35);
+    border-radius: 14px;
+    padding: 8px 22px;
+    min-width: 120px;
   }
   .player-hud .score {
-    font-size: 48px;
+    font-size: 64px;
     font-weight: bold;
+    line-height: 1;
+    letter-spacing: 2px;
   }
   .player-hud .ability-name {
     font-size: 16px;
     font-weight: bold;
-    margin-top: 4px;
+    margin-top: 6px;
     border-radius: 8px;
     padding: 4px 10px;
     display: inline-block;
@@ -64,9 +70,9 @@
 
   .paddle {
     position: absolute;
-    width: 16px;
+    width: 26px;
     height: 110px;
-    border-radius: 6px;
+    border-radius: 8px;
     transition: filter 0.15s, box-shadow 0.15s;
   }
   #paddle1 { background: #64b5f6; left: 30px; }
@@ -153,27 +159,83 @@
     align-items: center;
     justify-content: center;
     z-index: 50;
-    background: rgba(0,0,0,0.55);
+    background:
+      radial-gradient(circle at 30% 20%, rgba(100,181,246,0.18), transparent 50%),
+      radial-gradient(circle at 70% 80%, rgba(255,138,101,0.18), transparent 50%),
+      linear-gradient(160deg, #0d1117 0%, #16202b 100%);
     color: white;
     text-align: center;
+    padding: 20px;
+    overflow-y: auto;
   }
   #message-overlay h1 {
-    font-size: 42px;
-    text-shadow: 3px 3px 4px black;
-    margin-bottom: 14px;
+    font-size: 46px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #64b5f6, #ff8a65);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: none;
+    margin-bottom: 6px;
   }
-  #message-overlay p { font-size: 16px; opacity: 0.9; margin-bottom: 10px; line-height: 1.6; }
-  #message-overlay button {
-    margin-top: 16px;
-    font-size: 22px;
-    padding: 12px 32px;
-    border-radius: 10px;
+  #message-overlay .subtitle {
+    font-size: 14px;
+    opacity: 0.7;
+    margin-bottom: 18px;
+  }
+  #message-overlay p { font-size: 15px; opacity: 0.9; margin-bottom: 8px; line-height: 1.6; }
+  .info-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 14px 20px;
+    margin: 6px 0;
+    max-width: 420px;
+  }
+  .points-select-label {
+    font-size: 15px;
+    font-weight: bold;
+    margin-top: 18px;
+    margin-bottom: 10px;
+    opacity: 0.9;
+  }
+  .points-options {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+  .points-btn {
+    font-size: 18px;
+    font-weight: bold;
+    padding: 12px 22px;
+    border-radius: 12px;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.06);
+    color: white;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .points-btn:active { transform: scale(0.95); }
+  .points-btn.selected {
+    border-color: #ffeb3b;
+    background: rgba(255,235,59,0.18);
+    color: #ffeb3b;
+    box-shadow: 0 0 14px rgba(255,235,59,0.35);
+  }
+  #message-overlay button#start-game-btn {
+    margin-top: 22px;
+    font-size: 24px;
+    padding: 16px 46px;
+    border-radius: 14px;
     border: none;
-    background: #ffeb3b;
+    background: linear-gradient(90deg, #ffeb3b, #ffc107);
     cursor: pointer;
     font-weight: bold;
+    box-shadow: 0 4px 18px rgba(255,235,59,0.35);
   }
-  #message-overlay button:hover { background: #fdd835; }
+  #message-overlay button#start-game-btn:active { transform: scale(0.97); }
 
   #controls-info {
     position: absolute;
@@ -200,20 +262,20 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
     pointer-events: auto;
   }
-  .touch-zone.p1 { left: 14px; bottom: 50%; transform: translateY(50%); }
-  .touch-zone.p2 { right: 14px; bottom: 50%; transform: translateY(50%); }
+  .touch-zone.p1 { left: 10px; bottom: 50%; transform: translateY(50%); }
+  .touch-zone.p2 { right: 10px; bottom: 50%; transform: translateY(50%); }
 
   .touch-btn {
-    width: 64px;
-    height: 64px;
+    width: 72px;
+    height: 72px;
     border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.4);
-    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.08);
     color: white;
-    font-size: 26px;
+    font-size: 28px;
     font-weight: bold;
     display: flex;
     align-items: center;
@@ -221,15 +283,17 @@
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
     user-select: none;
+    opacity: 0.55;
   }
   .touch-btn:active, .touch-btn.pressed {
-    background: rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.3);
     transform: scale(0.92);
+    opacity: 0.9;
   }
   .touch-btn.ability-btn {
-    width: 70px;
-    height: 70px;
-    border-radius: 16px;
+    width: 76px;
+    height: 76px;
+    border-radius: 18px;
     font-size: 13px;
     text-align: center;
     line-height: 1.2;
@@ -269,11 +333,12 @@
   }
 
   @media (pointer: coarse) and (max-height: 450px) {
-    .touch-btn { width: 50px; height: 50px; font-size: 20px; }
-    .touch-btn.ability-btn { width: 56px; height: 56px; font-size: 11px; }
-    .player-hud .score { font-size: 32px; }
-    .player-hud .ability-name { font-size: 13px; }
-    .player-hud .ability-status { font-size: 11px; }
+    .touch-btn { width: 58px; height: 58px; font-size: 22px; }
+    .touch-btn.ability-btn { width: 62px; height: 62px; font-size: 11px; }
+    .player-hud { padding: 6px 14px; min-width: 90px; }
+    .player-hud .score { font-size: 44px; }
+    .player-hud .ability-name { font-size: 12px; }
+    .player-hud .ability-status { font-size: 10px; }
   }
 </style>
 </head>
@@ -299,13 +364,23 @@
   <div id="ball"></div>
 
   <div id="message-overlay">
-    <h1>Pong de Habilidades</h1>
-    <p>Mueve tu paleta y usa tu habilidad aleatoria en el momento justo.<br>
-    Cada habilidad cambia al usarla y tiene un tiempo de recarga.</p>
-    <p style="font-weight:bold; color:#64b5f6;">Jugador 1: W / S mover &nbsp;|&nbsp; 1 usar habilidad</p>
-    <p style="font-weight:bold; color:#ff8a65;">Jugador 2: J / L mover &nbsp;|&nbsp; P usar habilidad</p>
-    <p style="font-size:13px; opacity:0.7;">En celular: usa los botones laterales ▲▼ y el botón HABILIDAD de tu lado (horizontal)</p>
-    <button onclick="startGame()">Comenzar partida</button>
+    <h1>🏓 Pong de Habilidades</h1>
+    <div class="subtitle">2 jugadores en local · habilidades aleatorias</div>
+
+    <div class="info-card">
+      <p style="font-weight:bold; color:#64b5f6; margin-bottom:4px;">Jugador 1: W / S mover &nbsp;|&nbsp; 1 usar habilidad</p>
+      <p style="font-weight:bold; color:#ff8a65; margin-bottom:0;">Jugador 2: J / L mover &nbsp;|&nbsp; P usar habilidad</p>
+    </div>
+    <p style="font-size:13px; opacity:0.7; max-width:380px;">En celular: usa los botones laterales ▲▼ y el botón HABILIDAD de tu lado (horizontal)</p>
+
+    <div class="points-select-label">¿A cuántos puntos jugamos?</div>
+    <div class="points-options">
+      <div class="points-btn selected" data-points="5" id="pts-5">5 puntos</div>
+      <div class="points-btn" data-points="10" id="pts-10">10 puntos</div>
+      <div class="points-btn" data-points="15" id="pts-15">15 puntos</div>
+    </div>
+
+    <button id="start-game-btn" onclick="startGame()">Comenzar partida</button>
   </div>
 
   <div id="controls-info">Primero en llegar a 5 puntos gana</div>
@@ -333,9 +408,9 @@
 const W = window.innerWidth;
 const H = window.innerHeight;
 const PADDLE_HEIGHT_NORMAL = 110;
-const PADDLE_WIDTH = 16;
+const PADDLE_WIDTH = 26;
 const BALL_SIZE = 18;
-const WIN_SCORE = 5;
+let WIN_SCORE = 5;
 
 const ABILITIES = [
   {
@@ -655,9 +730,9 @@ const ball = {
   el: document.getElementById('ball'),
   x: W/2 - BALL_SIZE/2,
   y: H/2 - BALL_SIZE/2,
-  vx: 5,
-  vy: 3,
-  baseSpeed: 5,
+  vx: 3.5,
+  vy: 2.2,
+  baseSpeed: 3.5,
   speedMultiplier: 1,
   curveActive: false,
   gravityWell: false,
@@ -1092,6 +1167,16 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
+/* ===== Points selector ===== */
+['pts-5', 'pts-10', 'pts-15'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    document.querySelectorAll('.points-btn').forEach(b => b.classList.remove('selected'));
+    document.getElementById(id).classList.add('selected');
+    WIN_SCORE = parseInt(document.getElementById(id).dataset.points);
+    document.getElementById('controls-info').textContent = 'Primero en llegar a ' + WIN_SCORE + ' puntos gana';
+  });
+});
+
 function startGame() {
   document.getElementById('message-overlay').style.display = 'none';
   gameRunning = true;
@@ -1109,9 +1194,9 @@ function endGame(winner) {
   const winnerColor = winner === p1 ? '#64b5f6' : '#ff8a65';
 
   overlay.innerHTML = `
-    <h1 style="color:${winnerColor}">${winnerName} gana!</h1>
-    <p style="font-size:24px;">${p1.score} - ${p2.score}</p>
-    <button onclick="location.reload()">Jugar otra vez</button>
+    <h1 style="background:none; color:${winnerColor}; -webkit-text-fill-color:${winnerColor};">🏆 ${winnerName} gana!</h1>
+    <div class="subtitle" style="font-size:28px; font-weight:bold; color:white; opacity:1;">${p1.score} - ${p2.score}</div>
+    <button id="start-game-btn" onclick="location.reload()">Jugar otra vez</button>
   `;
   overlay.style.display = 'flex';
 }
