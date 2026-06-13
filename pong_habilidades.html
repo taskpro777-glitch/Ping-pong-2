@@ -960,6 +960,12 @@ const ABILITIES = [
 
 let gameRunning = false;
 let frame = 0;
+let lastTimestamp = null;
+
+// Velocidades en px/segundo (independiente del framerate)
+// 60fps × px_por_frame equivalente: baseSpeed 4.5 → 270 px/s
+const BALL_SPEED_PX_S    = 290;   // velocidad base de la bola
+const PADDLE_SPEED_PX_S  = 480;   // velocidad de paleta
 
 const p1 = {
   id: 'paddle1',
@@ -1017,9 +1023,9 @@ const ball = {
   el: document.getElementById('ball'),
   x: W/2 - BALL_SIZE/2,
   y: H/2 - BALL_SIZE/2,
-  vx: 3.5,
-  vy: 2.2,
-  baseSpeed: 3.5,
+  vx: BALL_SPEED_PX_S,
+  vy: BALL_SPEED_PX_S * 0.4,
+  baseSpeed: BALL_SPEED_PX_S,
   speedMultiplier: 1,
   curveActive: false,
   gravityWell: false,
@@ -1110,27 +1116,27 @@ function showAbilityPopup(self) {
   setTimeout(() => popup.remove(), 1100);
 }
 
-const PADDLE_SPEED = 8;
+// PADDLE_SPEED_PX_S defined above
 
-function updatePaddles() {
+function updatePaddles(delta) {
   // Player 1
   if (!p1.frozen) {
-    const speed1 = PADDLE_SPEED * p1.speedBoost;
+    const speed1 = PADDLE_SPEED_PX_S * p1.speedBoost;
     let up1 = keys['KeyW'], down1 = keys['KeyS'];
     if (p1.controlsInverted) { [up1, down1] = [down1, up1]; }
-    if (up1) p1.y -= speed1;
-    if (down1) p1.y += speed1;
+    if (up1) p1.y -= speed1 * delta;
+    if (down1) p1.y += speed1 * delta;
   }
 
   // Player 2 (human) or Bot
   if (gameMode === 'bot') {
-    updateBotAI();
+    updateBotAI(delta);
   } else if (!p2.frozen) {
-    const speed2 = PADDLE_SPEED * p2.speedBoost;
+    const speed2 = PADDLE_SPEED_PX_S * p2.speedBoost;
     let up2 = keys['KeyJ'], down2 = keys['KeyL'];
     if (p2.controlsInverted) { [up2, down2] = [down2, up2]; }
-    if (up2) p2.y -= speed2;
-    if (down2) p2.y += speed2;
+    if (up2) p2.y -= speed2 * delta;
+    if (down2) p2.y += speed2 * delta;
   }
 
   p1.y = Math.max(0, Math.min(H - p1.paddleHeight, p1.y));
@@ -1141,108 +1147,81 @@ function updatePaddles() {
   p2.el.style.filter = p2.frozen ? 'brightness(1.6) saturate(0.3)' : '';
 }
 
-function updateBall() {
-  const speed = ball.speedMultiplier * ball.zoneSlow;
+function updateBall(delta) {
   const effSize = BALL_SIZE * ball.sizeMultiplier;
 
-  // Sticky: if ball is stuck to a paddle, follow it instead of moving freely
+  // Sticky: ball held by paddle
   if (p1.stickingBall === ball || p2.stickingBall === ball) {
     const holder = p1.stickingBall === ball ? p1 : p2;
     ball.x = holder.side === 'left' ? holder.x + PADDLE_WIDTH + 2 : holder.x - effSize - 2;
     ball.y = holder.y + holder.paddleHeight/2 - effSize/2;
-    holder.stickTimer--;
+    holder.stickTimer -= delta * 60;
     if (holder.stickTimer <= 0) {
       holder.stickingBall = null;
       ball.vx = (holder.side === 'left' ? 1 : -1) * Math.max(ball.baseSpeed, Math.abs(ball.vx)) * 1.3;
-      ball.vy = (Math.random() - 0.5) * 8;
+      ball.vy = (Math.random() - 0.5) * ball.baseSpeed * 0.8;
       spawnHitParticles(ball.x + effSize/2, ball.y + effSize/2, '#ffab91');
     }
-    render();
     return;
   }
 
-  ball.x += ball.vx * speed;
-  ball.y += ball.vy * speed;
+  const speed = ball.speedMultiplier * ball.zoneSlow;
+  ball.x += ball.vx * speed * delta;
+  ball.y += ball.vy * speed * delta;
 
-  // Curve ability: zigzag wobble
-  if (ball.curveActive) {
-    ball.y += Math.sin(frame / 8) * 2.5;
-  }
+  // Curve: wobble
+  if (ball.curveActive) ball.y += Math.sin(frame * 0.08) * 60 * delta;
 
-  // Confusion: random vertical kicks
-  if (ball.confuseActive && frame % 60 === 0) {
-    ball.vy = (Math.random() - 0.5) * 12;
-  }
+  // Confusion: random vertical kick every ~1s
+  if (ball.confuseActive && frame % 60 === 0) ball.vy = (Math.random() - 0.5) * ball.baseSpeed * 1.2;
 
-  // Gravity well: pull ball toward vertical center
-  if (ball.gravityWell) {
-    const centerY = H/2;
-    ball.y += (centerY - (ball.y + effSize/2)) * 0.01;
-  }
+  // Gravity well
+  if (ball.gravityWell) ball.y += ((H/2) - (ball.y + effSize/2)) * 0.6 * delta;
 
-  // Slow zones: reduce ball speed when near a paddle with active slow field
-  let inAnySlowZone = false;
-  [p1, p2].forEach(p => {
-    if (p.slowZoneActive) {
-      const ballCenterX = ball.x + effSize/2;
-      const zoneStart = p.side === 'left' ? PADDLE_WIDTH + 30 : W - PADDLE_WIDTH - 30 - 120;
-      const zoneEnd   = p.side === 'left' ? PADDLE_WIDTH + 30 + 120 : W - PADDLE_WIDTH - 30;
-      if (ballCenterX > zoneStart && ballCenterX < zoneEnd) {
-        inAnySlowZone = true;
-      }
-    }
-  });
-  ball.zoneSlow = inAnySlowZone ? 0.45 : 1;
-
-  // Rainbow visual
-  if (ball.rainbowActive) {
-    const hue = (frame * 6) % 360;
-    ball.el.style.background = `hsl(${hue}, 90%, 60%)`;
-    ball.el.style.boxShadow = `0 0 16px hsl(${hue}, 90%, 60%)`;
-  }
-
-  if (ball.y <= 0) {
-    ball.y = 0;
-    ball.vy = Math.abs(ball.vy);
-  }
-  if (ball.y >= H - effSize) {
-    ball.y = H - effSize;
-    ball.vy = -Math.abs(ball.vy);
-  }
-
+  // Magnet
   [p1, p2].forEach(p => {
     if (p.magnetActive) {
-      const paddleCenterY = p.y + p.paddleHeight/2;
-      const ballCenterY = ball.y + effSize/2;
-      const dy = paddleCenterY - ballCenterY;
-      const ballCenterX = ball.x + effSize/2;
-      const onCorrectSide = (p.side === 'left' && ballCenterX < W/2) || (p.side === 'right' && ballCenterX > W/2);
-      if (onCorrectSide) {
-        ball.y += dy * 0.04;
-      }
+      const cx = ball.x + effSize/2;
+      const onSide = (p.side === 'left' && cx < W/2) || (p.side === 'right' && cx > W/2);
+      if (onSide) ball.y += ((p.y + p.paddleHeight/2) - (ball.y + effSize/2)) * 2.4 * delta;
     }
   });
 
+  // Slow zones
+  let inSlowZone = false;
+  [p1, p2].forEach(p => {
+    if (p.slowZoneActive) {
+      const cx = ball.x + effSize/2;
+      const s = p.side === 'left' ? PADDLE_WIDTH + 30 : W - PADDLE_WIDTH - 150;
+      const e = p.side === 'left' ? PADDLE_WIDTH + 150 : W - PADDLE_WIDTH - 30;
+      if (cx > s && cx < e) inSlowZone = true;
+    }
+  });
+  ball.zoneSlow = inSlowZone ? 0.45 : 1;
+
+  // Rainbow
+  if (ball.rainbowActive) {
+    const hue = (frame * 4) % 360;
+    ball.el.style.background = `hsl(${hue},90%,60%)`;
+    ball.el.style.boxShadow = `0 0 16px hsl(${hue},90%,60%)`;
+  }
+
+  // Top/bottom walls
+  if (ball.y <= 0) { ball.y = 0; ball.vy = Math.abs(ball.vy); }
+  if (ball.y >= H - effSize) { ball.y = H - effSize; ball.vy = -Math.abs(ball.vy); }
+
+  // Paddle collisions
   checkPaddleCollision(p1, ball);
   checkPaddleCollision(p2, ball);
 
+  // Goal walls
   if (ball.x <= 0) {
-    if (p1.wallActive) {
-      ball.x = 0;
-      ball.vx = Math.abs(ball.vx);
-      spawnHitParticles(ball.x + effSize/2, ball.y + effSize/2, '#03a9f4');
-    } else {
-      scorePoint(p2, p1);
-    }
+    if (p1.wallActive) { ball.x = 0; ball.vx = Math.abs(ball.vx); spawnHitParticles(ball.x+effSize/2, ball.y+effSize/2, '#03a9f4'); }
+    else scorePoint(p2, p1);
   }
   if (ball.x >= W - effSize) {
-    if (p2.wallActive) {
-      ball.x = W - effSize;
-      ball.vx = -Math.abs(ball.vx);
-      spawnHitParticles(ball.x + effSize/2, ball.y + effSize/2, '#03a9f4');
-    } else {
-      scorePoint(p1, p2);
-    }
+    if (p2.wallActive) { ball.x = W-effSize; ball.vx = -Math.abs(ball.vx); spawnHitParticles(ball.x+effSize/2, ball.y+effSize/2, '#03a9f4'); }
+    else scorePoint(p1, p2);
   }
 }
 
@@ -1281,26 +1260,25 @@ function checkPaddleCollision(p, ball) {
     return;
   }
 
-  const bounceMult = (p.ability && p.abilityActive > 0 && ball.boostedBounce) ? 1.12 : 1.04;
+  // Small additive speed increase per hit (not multiplicative - won't compound infinitely)
+  const speedIncrease = (p.ability && p.abilityActive > 0 && ball.boostedBounce) ? 30 : 12;
+  const maxSpeed = ball.baseSpeed * 2.2; // cap at 2.2x base speed
 
   if (p.side === 'left' && ball.vx < 0) {
     ball.x = paddleRight;
-    ball.vx = Math.abs(ball.vx) * bounceMult;
+    ball.vx = Math.min(Math.abs(ball.vx) + speedIncrease, maxSpeed);
     addSpinFromHit(p, ball);
     bouncePaddle(p);
     spawnHitParticles(ballCenterX, ballCenterY, '#64b5f6');
     p.lastHitBall = ball;
   } else if (p.side === 'right' && ball.vx > 0) {
     ball.x = paddleLeft - effSize;
-    ball.vx = -Math.abs(ball.vx) * bounceMult;
+    ball.vx = -Math.min(Math.abs(ball.vx) + speedIncrease, maxSpeed);
     addSpinFromHit(p, ball);
     bouncePaddle(p);
     spawnHitParticles(ballCenterX, ballCenterY, '#ff8a65');
     p.lastHitBall = ball;
   }
-
-  const maxSpeed = 14;
-  ball.vx = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vx));
 }
 
 function addSpinFromHit(p, ball) {
@@ -1308,8 +1286,8 @@ function addSpinFromHit(p, ball) {
   const effSize = BALL_SIZE * ball.sizeMultiplier;
   const ballCenter = ball.y + effSize/2;
   const offset = (ballCenter - paddleCenter) / (p.paddleHeight/2);
-  ball.vy += offset * 3;
-  ball.vy = Math.max(-10, Math.min(10, ball.vy));
+  ball.vy += offset * ball.baseSpeed * 0.45;
+  ball.vy = Math.max(-ball.baseSpeed * 0.9, Math.min(ball.baseSpeed * 0.9, ball.vy));
 }
 
 function bouncePaddle(p) {
@@ -1370,7 +1348,7 @@ function resetBall(scorer) {
   ball.x = W/2 - effSize/2;
   ball.y = H/2 - effSize/2;
   ball.vx = (scorer === p1 ? -1 : 1) * ball.baseSpeed;
-  ball.vy = (Math.random() - 0.5) * 4;
+  ball.vy = (Math.random() - 0.5) * ball.baseSpeed * 0.5;
   ball.speedMultiplier = 1;
   ball.zoneSlow = 1;
   ball.el.classList.remove('fire', 'slow');
@@ -1417,7 +1395,7 @@ function spawnExtraBalls(count) {
       el,
       x: W/2 - BALL_SIZE/2,
       y: H/2 - BALL_SIZE/2,
-      vx: (Math.random() > 0.5 ? 1 : -1) * (4 + Math.random() * 2),
+      vx: (Math.random() > 0.5 ? 1 : -1) * (BALL_SPEED_PX_S * 0.75 + Math.random() * 80),
       vy: (Math.random() - 0.5) * 6,
       speedMultiplier: 1
     });
@@ -1429,34 +1407,26 @@ function removeExtraBalls() {
   extraBalls = [];
 }
 
-function updateExtraBalls() {
+function updateExtraBalls(delta) {
   extraBalls.forEach(b => {
-    b.x += b.vx;
-    b.y += b.vy;
+    b.x += b.vx * delta;
+    b.y += b.vy * delta;
 
     if (b.y <= 0) { b.y = 0; b.vy = Math.abs(b.vy); }
     if (b.y >= H - BALL_SIZE) { b.y = H - BALL_SIZE; b.vy = -Math.abs(b.vy); }
 
-    // Paddle collisions (simplified, no score impact, just bounce)
     [p1, p2].forEach(p => {
       const paddleLeft = p.x;
       const paddleRight = p.x + PADDLE_WIDTH;
       const paddleTop = p.y;
       const paddleBottom = p.y + p.paddleHeight;
-
       if (b.x + BALL_SIZE > paddleLeft && b.x < paddleRight &&
           b.y + BALL_SIZE > paddleTop && b.y < paddleBottom) {
-        if (p.side === 'left' && b.vx < 0) {
-          b.x = paddleRight;
-          b.vx = Math.abs(b.vx);
-        } else if (p.side === 'right' && b.vx > 0) {
-          b.x = paddleLeft - BALL_SIZE;
-          b.vx = -Math.abs(b.vx);
-        }
+        if (p.side === 'left' && b.vx < 0) { b.x = paddleRight; b.vx = Math.abs(b.vx); }
+        else if (p.side === 'right' && b.vx > 0) { b.x = paddleLeft - BALL_SIZE; b.vx = -Math.abs(b.vx); }
       }
     });
 
-    // Bounce off side walls instead of scoring (extra balls don't score)
     if (b.x <= 0) { b.x = 0; b.vx = Math.abs(b.vx); }
     if (b.x >= W - BALL_SIZE) { b.x = W - BALL_SIZE; b.vx = -Math.abs(b.vx); }
 
@@ -1528,12 +1498,18 @@ function render() {
   ball.el.style.transform = `rotate(${rotation}deg)`;
 }
 
-function gameLoop() {
+function gameLoop(timestamp) {
+  if (!lastTimestamp) lastTimestamp = timestamp;
+  // Delta time en segundos, clampeado a max 50ms para evitar saltos en background/pausa
+  const rawDelta = (timestamp - lastTimestamp) / 1000;
+  const delta = Math.min(rawDelta, 0.05);
+  lastTimestamp = timestamp;
+
   if (gameRunning) {
     frame++;
-    updatePaddles();
-    updateBall();
-    updateExtraBalls();
+    updatePaddles(delta);
+    updateBall(delta);
+    updateExtraBalls(delta);
     updateAbilities();
     render();
   }
@@ -1549,6 +1525,7 @@ function openPauseMenu() {
 
 function resumeGame() {
   document.getElementById('pause-overlay').style.display = 'none';
+  lastTimestamp = null; // reset so delta doesn't spike
   gameRunning = true;
 }
 
@@ -1676,38 +1653,32 @@ const BOT_SETTINGS = {
 let botTargetY = H/2;
 let botFrameCounter = 0;
 
-function updateBotAI() {
+function updateBotAI(delta) {
   const settings = BOT_SETTINGS[botDifficulty];
   botFrameCounter++;
 
-  // Recalculate target with a reaction delay (bot "sees" the ball with lag)
+  // Recalculate target every N frames
   if (botFrameCounter % settings.reactionDelay === 0) {
     const effSize = BALL_SIZE * ball.sizeMultiplier;
     const ballCenterY = ball.y + effSize/2;
-    // Add some error/imprecision based on difficulty
     const error = (Math.random() - 0.5) * settings.errorMargin;
     botTargetY = ballCenterY + error - p2.paddleHeight/2;
   }
 
-  // Only chase the ball if it's moving toward the bot (reduces "perfect tracking" feel)
   const ballMovingTowardBot = ball.vx > 0;
   if (!ballMovingTowardBot && botDifficulty !== 'hard') {
-    // Drift back toward center when ball moves away
     botTargetY = H/2 - p2.paddleHeight/2;
   }
 
   const diff = botTargetY - p2.y;
-  const speed = PADDLE_SPEED * settings.speedMult * p2.speedBoost;
+  const speed = PADDLE_SPEED_PX_S * settings.speedMult * p2.speedBoost;
 
-  if (!p2.frozen) {
-    if (Math.abs(diff) > 4) {
-      let move = (p2.controlsInverted ? -1 : 1) * Math.sign(diff) * Math.min(speed, Math.abs(diff));
-      p2.y += move;
-    }
+  if (!p2.frozen && Math.abs(diff) > 2) {
+    const move = (p2.controlsInverted ? -1 : 1) * Math.sign(diff) * Math.min(speed * delta, Math.abs(diff));
+    p2.y += move;
   }
   p2.y = Math.max(0, Math.min(H - p2.paddleHeight, p2.y));
 
-  // Occasionally use ability if available
   if (p2.abilityCooldown === 0 && Math.random() < settings.abilityChance) {
     activateAbility(p2, p1);
   }
@@ -1717,6 +1688,7 @@ function startGame() {
   // Recalculate dimensions at game start (avoids mobile viewport bugs)
   W = document.getElementById('game').clientWidth;
   H = document.getElementById('game').clientHeight;
+  lastTimestamp = null;
 
   // Reset positions with fresh dimensions
   p1.x = 30;
@@ -1726,8 +1698,8 @@ function startGame() {
 
   ball.x = W/2 - BALL_SIZE/2;
   ball.y = H/2 - BALL_SIZE/2;
-  ball.vx = 3.5;
-  ball.vy = (Math.random() - 0.5) * 4;
+  ball.vx = BALL_SPEED_PX_S;
+  ball.vy = (Math.random() - 0.5) * BALL_SPEED_PX_S * 0.5;
   ball.speedMultiplier = 1;
   ball.zoneSlow = 1;
   ball.sizeMultiplier = 1;
